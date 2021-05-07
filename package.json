@@ -1,0 +1,11 @@
+{
+  "name": "bytecokie-interview-prep",
+  "version": "0.0.1",
+  "description": "",
+  "main": "index.js",
+  "author": "Vedant Bhatt",
+  "license": "ISC",
+  "dependencies": {
+    "collections": "^5.1.12"
+  }
+}
