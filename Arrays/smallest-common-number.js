@@ -1,5 +1,4 @@
 let findLeastCommonNumber = function (a, b, c) {
-  //TODO: Write - Your - Code
   let i = 0;
   let j = 0;
   let k = 0;
