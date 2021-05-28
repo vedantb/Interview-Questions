@@ -6,24 +6,21 @@ const find_subarrays = function (arr, target) {
   if (target <= 1) return 0;
   if (!arr || arr.length === 0) return 0;
 
-  let product = 1;
-  let result = 0;
-
-  let left = 0;
-  let right = 0;
-
-  while (right < arr.length) {
+  let result = [],
+    product = 1,
+    left = 0;
+  for (right = 0; right < arr.length; right++) {
     product *= arr[right];
-
-    while (product >= target) {
+    while (product >= target && left < arr.length) {
       product /= arr[left];
-      left++;
+      left += 1;
     }
-
-    result += right - left + 1;
-    right++;
+    const tempList = [];
+    for (let i = right; i > left - 1; i--) {
+      tempList.unshift(arr[i]);
+      result.push([...tempList]);
+    }
   }
-
   return result;
 };
 
