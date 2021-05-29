@@ -1,0 +1,163 @@
+<html>
+  <head></head>
+  <body>
+    <main>
+      <section>
+        Text that shouldn't be in the output
+        <div>Text that shouldn't be in the output</div>
+        <header>
+          Text that shouldn't be in the output
+          <h1>Text that shouldn't be in the output</h1>
+          <h2>On this Page</h2>
+          <!-- node1 -->
+          <button id="node1">
+            Jump to section
+          </button>
+        </header>
+        <ul>
+          <li>
+            <span
+              ><span
+                ><span
+                  ><span
+                    ><span><span>Properties</span></span></span
+                  ></span
+                ></span
+              ></span
+            >
+          </li>
+          <li>
+            <span
+              ><span
+                ><span
+                  ><span
+                    ><span><span>Methods</span></span></span
+                  ></span
+                ></span
+              ></span
+            >
+          </li>
+          <li>
+            <span
+              ><span
+                ><span
+                  ><span
+                    ><span><span>Examples</span></span></span
+                  ></span
+                ></span
+              ></span
+            >
+          </li>
+          <li>
+            <span
+              ><span
+                ><span
+                  ><span
+                    ><span><span>Specifications</span></span></span
+                  ></span
+                ></span
+              ></span
+            >
+          </li>
+          <li>
+            <span
+              ><span
+                ><span
+                  ><span
+                    ><span><span>Browser compatibility</span></span></span
+                  ></span
+                ></span
+              ></span
+            >
+          </li>
+          <li>
+            <span
+              ><span
+                ><span
+                  ><span
+                    ><span><span>Related topics</span></span></span
+                  ></span
+                ></span
+              ></span
+            >
+          </li>
+        </ul>
+      </section>
+    </main>
+    <div>
+      <article>
+        text that should be included
+        <p id="node2">
+          <!-- node2 -->
+          <span>
+            The <strong>DOM</strong>&nbsp;<strong><code>Node</code></strong
+            >&nbsp;interface is an abstract base class upon which many other DOM API objects are based, thus letting
+            those object types to be used similarly and often interchangeably.
+          </span>
+          As an abstract class, there is no such thing as a plain <code>Node</code> object. All objects that implement
+          <code>Node</code> functionality are based on one of its subclasses. Most notable are
+          <strong><code>Document</code></strong
+          >, <strong><code>Element</code></strong
+          >, and <strong><code>DocumentFragment</code></strong
+          >.
+        </p>
+        <p>
+          Text that shouldn't be in the output In addition, every kind of DOM node is represented by an interface based
+          on <code>Node</code>. These include <strong><code>Attr</code></strong
+          >,
+        </p>
+      </article>
+    </div>
+  </body>
+  <script>
+    let node1 = document.getElementById("node1");
+    let node2 = document.getElementById("node2");
+    let isNode2Found;
+
+    let getTextBetweenNodes = function (node1, node2) {
+      let result = "";
+      let node1TextContent = exploreChildren(node1);
+      result += node1TextContent;
+      if (!isNode2Found) {
+        result = result + exploreParent(node1.parentNode, node1);
+      }
+      return result.replace(/\s+/g, " ");
+    };
+
+    let exploreParent = function (nodeToExplore, childrenAfterExplore) {
+      if (nodeToExplore.childNodes.length === 0) return;
+      let childFound = false;
+      let result = "";
+      for (let i = 0; i < nodeToExplore.childNodes.length; i++) {
+        if (nodeToExplore.childNodes[i] === childrenAfterExplore) {
+          childFound = true;
+          continue;
+        } else if (!childFound) {
+          continue;
+        } else {
+          result = result + exploreChildren(nodeToExplore.childNodes[i]);
+          if (isNode2Found) break;
+        }
+      }
+      if (!isNode2Found) {
+        result = result + exploreParent(nodeToExplore.parentNode, nodeToExplore);
+      }
+      return result;
+    };
+
+    let exploreChildren = function (node1) {
+      let result = "";
+      if (node1.childNodes.length === 0 || node1.childNodes.length === 1) return node1.textContent.trim();
+      for (let i = 0; i < node1.childNodes.length; i++) {
+        result = result + " " + exploreChildren(node1.childNodes[i]);
+        if (node1.childNodes[i] === node2) {
+          isNode2Found = true;
+          break;
+        }
+      }
+      return result;
+    };
+
+    console.log(getTextBetweenNodes(node1, node2));
+  </script>
+</html>
