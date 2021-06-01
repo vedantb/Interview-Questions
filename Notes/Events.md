@@ -1415,3 +1415,401 @@ const event = new MouseEvent("click", { button: 1 });
 ```
 
 ## Events are Dispatched Synchronously
+
+Dispatching an event is synchronous and all event listeners on the event path will be executed immediately within the current call stack.
+Here I'm adding a click event listener to the button which is going to log 'listener' and after the `button.dispatchEvent` call, I'm going to log "after event".
+
+```js
+function onClick(event) {
+  console.log("listener");
+}
+button.addEventListener("click", onClick);
+const event = new MouseEvent("click");
+button.dispatchEvent(event);
+
+console.log("after event");
+
+//Output:
+// listener
+// after event
+```
+
+We've seen previously that `dispatchEvent` will return a boolean which represents whether the event was allowed or canceled. The only way `dispatchEvent` can have this behavior is if it was synchronous. If it's async you would've got back a promise or some other future value.
+
+It's totally possible to dispatch an event while another event is dispatching.
+
+```js
+button.addEventListener("A", function onA() {
+  console.log("onA start");
+  button.dispatchEvent(new Event("B"));
+  console.log("onA finish");
+});
+button.addEventListener("B", function onB() {
+  console.log("B");
+});
+const event = new Event("A");
+button.dispatchEvent(event);
+
+// OUTPUT:
+// onA start
+// B
+// onA finish
+```
+
+This behavior can cause performance problems in applications if you're doing some heavy processing in your event listeners as each dispatched event is increasing the time it takes for the current task to complete. So, it's blocking other things from happening.
+If you do need to dispatch an event in response to another event, you might consider scheduling some future work, e.g. in this case I'm using `setTimeout` to schedule a future task to dispatch that second event. This gives the browser a chance to do other things such as rendering before having to process this event. Keep in mind that this is change in behavior as B would be logged in the end instead.
+
+```js
+button.addEventListener("A", function onA() {
+  console.log("onA start");
+  setTimeout(() => {
+    button.dispatchEvent(new Event("B"));
+  });
+  console.log("onA finish");
+});
+button.addEventListener("B", function onB() {
+  console.log("B");
+});
+const event = new Event("A");
+button.dispatchEvent(event);
+
+// OUTPUT:
+// onA start
+// onA finish
+// B
+```
+
+Because dispatching events is synchronous, you do need to be careful that you don't create an infinite loop. So, here in my A event listener, I'm going to dispatch a new B event and in my B listener, I'm going to dispatch a new A event.
+
+```js
+button.addEventListener("A", function onA() {
+  button.dispatchEvent(new Event("B"));
+});
+
+button.addEventListener("B", function onB() {
+  button.dispatchEvent(new Event("A"));
+});
+
+const event = new Event("A");
+button.dispatchEvent(event);
+
+// Maximum call stack exceeded
+```
+
+## Add and Remove Event Listeners while an Event is Dispatching
+
+Explained with the domevents.dev visualizer
+
+It is possible for an event listener to add more event listeners to the event path while the event is being dispatched. This event listener would be able to add more event listeners along here. All of these event listeners would be executed, as they are on the subsequent event path.
+
+This event listener could add event listeners to its parent in the capture phase during an event, but these won't be executed. This event target in that phase has already finished, and so these event listeners won't be called as part of this event.
+
+Also, if this event listener adds more event listeners to the same event target in the same event phase during an event, then these added event listeners will not be executed as well. It also is possible for an event listener to remove upcoming event listeners on the event path.
+
+This event listener here could say, "I actually want to remove this event listener," and it could do that. This event listener, the removed one, would not be executed as part of the event path.
+
+A difference with removing upcoming event listeners during an event is that you can remove event listeners on the same event target in the same event phase. This event listener would be able to remove this event listener here, and then the removed event listener would not be called.
+
+The takeaway here is that the event listeners on the event path are not fixed at the point at which the event is dispatched. The event listeners that will be executed during dispatching of an event can be modified.
+
+At the time of writing, if a capture event listener on the target of an event adds a bubble event listener on the same event target, then some browsers will call the new bubble event listener, and others will not. Because of the inconsistencies, it is safest not to rely on this behavior.
+
+## DOM Events and the Event Loop
+
+![Event Loop](https://i.imgur.com/mI2RlTd.png)
+
+Here is a simplified diagram of how the event loop works in JavaScript. On our call stack is the code that is currently executing. All JavaScript is executed in the call stack. The call stack is our single execution thread.
+
+We also have multiple task queues. Task queues contain an ordered list of tasks that are waiting to be executed on the call stack. There are different task queues for different types of tasks.
+
+For example, there might be one task queue for callbacks and another for events. Browsers are free to define what these different task queues are. It is the job of the event loop to take a task off one task queue and move it over to the call stack to be executed.
+
+The event loop is constantly checking the task queues for new tasks to be run. It is up to browsers to decide which task queue to prioritize pulling tasks from. The event loop is also responsible for coordinating UI rendering tasks.
+
+Web APIs can add tasks to a task queue. For example, when you write setTimeout() and you pass in a callback function and the number 100, that will ask a web API to create a task to invoke the callback function after waiting 100 milliseconds.
+
+After 100 milliseconds, a task to invoke the callback is added to a task queue. Eventually, the invoked callback task reaches the front of the task queue and is picked up by the event loop and is executed in the call stack.
+
+When an event is occurring in the browser, a web API creates a task for the event and adds it to a task queue. Eventually, the task is picked up by the event loop, given to the call stack, where all the event listeners for that event will be executed.
+
+If you have a long-running task in the call stack, that task blocks other tasks from being picked up, including tasks for events. For input events, this can cause input delay for your users.
+
+In the same way, if you are doing a lot of expensive work in your event listeners, then your event task can prevent other tasks such as callbacks and other events from being picked up by the event loop and executed in the call stack.
+
+## DOM Events and Microtasks
+
+A microtask is any piece of code that has been assigned to run after a task is completed or when the call stack is empty. In this example, we have a task to execute a callback function. The callback function is queuing a microtask to execute a function called first.
+
+There are a few different mechanisms to queue a microtask, but the `queueMicrotask` API is super clear. Our callback function then also queues another microtask to execute a function called second. When our callback function is finished and our callback task is complete, all microtasks in the microtask queue are run.
+
+```js
+const button = document.querySelector("button");
+if (button === null) {
+  throw new Error("Unable to find element");
+}
+
+setTimeout(() => console.log("future task"));
+
+queueMicroTask(() => console.log("micro task"));
+
+console.log("initial task");
+
+// OUTPUT
+// initial task
+// micro task
+// future task
+```
+
+Let's see whats happening. When this code is executing, it will log 'initial task` to the console. When this body of code finishes, the call stack will be empty and our microtask will be added to the callstack and we will log micro task to the console. At a later time, the task we created with set timeout will be added to the call stack and log future task
+
+When a task for an event is being executed on the call stack, all EventListeners for the event are executed. What is interesting to note is that for our clickTask, after every `EventListener` is executed, the call stack is empty.
+
+![Click event task](https://imgur.com/EII8v23.png)
+
+When the call stack is empty, our micro task queue will be executed. What this means is that microtasks queued within an event listener will be executed immediately after that event listener and before the next event listener is executed.
+
+Here I am adding two click event listeners to the button. In the first event listener I am logging "listener 1" and queuing a micro task which will log "micro task". The second event listener is logging out "listener 2" to the console.
+
+```js
+button.addEventListener("click", function first(event) {
+  console.log("listener 1");
+  queueMicroTask(() => console.log("micro task"));
+});
+
+button.addEventListener("click", function second(event) {
+  console.log("listener 2");
+});
+
+//OUTPUT:
+// listener 1
+// micro task
+// listener 2
+```
+
+Things are a little bit different when we manually dispatch a synthetic event. Dispatching events is synchronous and all event listeners on the event path will be executed. In this case, out `dispatchEvent` call is in the call stack for the entire operation. What this means is that our callstack is not empty between our event listeners. Because the call stack is not empty, microtasks queued in event listeners will not be executed until all the event listeners are executed and either the task is complete or the call stack is empty.
+
+```js
+button.addEventListener("click", function first(event) {
+  console.log("listener 1");
+  queueMicroTask(() => console.log("micro task"));
+});
+
+button.addEventListener("click", function second(event) {
+  console.log("listener 2");
+});
+
+button.dispatchEvent(new MouseEvent("click"));
+
+//OUTPUT:
+// listener 1
+// listener 2
+// micro task
+```
+
+The changed ordering of microtasks is something to be aware of when manually dispatching events.
+
+## Improve Scroll Performance with Passive Event Listeners
+
+Here, we have a setup where there's a fair amount of event listeners on an event path. Let's pretend these event listeners are listening for the wheel event. A web page can opt out of native scrolling by canceling one of a few different events, including the wheel event.
+
+If a user is trying to scroll the page, the browser has to wait for our wheel event listeners to be processed before the browser can know if native scrolling is allowed to happen. It has to wait to see if the event was canceled. This delay can be significant and can make a web page feel unresponsive.
+
+This delay can be even worse if the browser is already executing some other task in the call stack, which needs to be finished before the wheel event can even start to be processed. The solution to this problem is passive event listeners.
+
+A passive event listener is like any other event listener except the event listener says up front that it will not cancel an event. If all of our event listeners on our event path are passive, then the browser does not need to wait for the event path to be processed to know if an event will be canceled. It already knows the event cannot be canceled.
+
+In our case of scrolling a web page, if all of the event listeners on our wheel event path are passive, then the browser can allow the native scroll to start straightaway, without needing to wait for any JavaScript. The browser can then process the wheel event in the call stack at a later point.
+
+If any of our event listeners on the event path are not passive, then the browser has to wait for that event listener to be executed before it can know if the event will be canceled. To register an event listener, add it with `addEventListener` as passive. You can set passive to true as a part of the `addEventListener` options object.
+
+```js
+window.addEventListener(
+  "wheel",
+  function onWheel() {
+    console.log("wheel");
+  },
+  { passive: true }
+);
+```
+
+You can use the passive property in combination with any of the other `addEventListener` option object properties. Here, I am adding a wheel event listener to the window. In my onwheel function, I'm going to log our wheel to the console. For this lesson, I have made the body element of my example scrollable. When I scroll the body with my mouse wheel, I see that wheel is logged out to the console.
+
+Passive event listeners are the same as any other event listener, except they are not permitted to cancel events. Calling `event.preventDefault()` inside of a passive event listener will not cancel an event. I'm going to try and cancel the event with `event.preventDefault()` and then I'm going to log out whether the event was canceled by looking at the `event.defaultPrevented` property.
+
+```js
+window.addEventListener(
+  "wheel",
+  function onWheel(event) {
+    event.preventDefault();
+    console.log("canceled?", event.defaultPrevented);
+  },
+  { passive: true }
+);
+```
+
+If we change passive to false, and then we come back to the browser, and I try and scroll the web page with my mouse wheel again, we'll see that our wheel event was canceled, and the scrolling of the page did not occur. The default behavior of scrolling the page was prevented by our canceling of the event, in our non-passive wheel event listener.
+
+Generally speaking, passive event mechanics are only used by browsers for events, that if canceled, would prevent scrolling. These are `touchstart`, `touchmove`, `wheel`, and a non-standard `mousewheel` events. There does not appear to be any benefits to using passive event listeners for non-scrolling related events, such as click.
+
+Some browsers have decided to make the `touchstart`, `touchmove`, `wheel`, and `mousewheel` event listeners passive by default when attached to the `window`, `document`, or the `body`. Now, I'm going to take away my explicit setting of passive to true on this wheel event listener.
+
+You can opt out of these default passive values by explicitly setting your own passive property in your addEventListener() options object. Here, I am explicitly setting my wheel event listener to not be passive. When I come over here and I try and scroll the page with my mouse wheel, I see that I'm able to cancel the event, and the default behavior of scrolling the page was prevented.
+
+Whether a particular event for a particular target is passive by default does seem to be different between browsers. Because of this, it is always safest to explicitly define an event listener as passive if you are listening to the touchstart, touchmove, wheel or mousewheel events. You do not need to cancel the event in your event listener.
+
+The ontouchstart, ontouchmove, onwheel and onmousewheel object property event handlers use the default passive value for the event type on that target. There is no way to parse in a passive value to an object property event handler, so you'll always get the default passive value.
+
+Here, I'm adding an onwheel object property event handler to the window. I'm going to try and cancel the event, and then log out whether the event was canceled. Here, I'm seeing the same warning I saw before, where I'm unable to call preventDefault() inside a passive event listener due to the target being treated as passive.
+
+```js
+window.onwheel = function (event) {
+  event.preventDefault();
+  console.log("canceled?", event.defaultPrevented);
+};
+```
+
+Wheel events on the window, document and body are treated as passive by default in Chrome, and so the onwheel property is also seeing the same behavior. Our onwheel function can't opt out of this behavior. There's no way for me to make this onwheel object property event handler not passive.
+
+## Default Passive Values on the Body Element
+
+HTML attribute event handlers added to the body are not passive by default. Here in my onwheel HTML attribute event handler, I'm trying to cancel the event with `event.preventDefault()`, and then I'm going to logout whether the event was canceled.
+
+```html
+<body onwheel="event.preventDefault(); console.log('canceled?', event.defaultPrevented)">
+  <div></div>
+</body>
+```
+
+If I come up to the browser and try and scroll the page with my mouse wheel, I'll say that I was canceling the event. This would not be possible if the EventListener was passive. Now, I'm going to remove this attribute.
+
+If I come back to my JavaScript file, and I add an onwheel object property event handler to the body, and I call `event.preventDefault()`, and log out whether the event was canceled. Now, if I try and scroll the page, we'll see that it was actually passive by default, and we were unable to cancel the event.
+
+```js
+document.body.onwheel = function (event) {
+  event.preventDefault();
+  console.log("canceled?", event.defaultPrevented);
+};
+```
+
+Now, I'm using `addEventListener` to add a wheel EventListener. I'm going to try again. Cancel the event and log out whether it was canceled. Our EventListener added to the body is also being treated as passive.
+
+```js
+document.body.addEventListener("wheel", function onWheel(event) {
+  event.preventDefault();
+  console.log("canceled?", event.defaultPrevented);
+});
+```
+
+The takeaway here is that the scroll-related events, HTML attribute event handlers added to the body element, don't have the default passive behavior as if you were adding an EventListener to the body element using addEventListener() or an object property event handler.
+
+## Synchronous and Asynchronous Events (Ordered and Unordered events)
+
+Events are classified as either synchronous or asynchronous. Here, I am showing you the definition of this classification in the UI Events spec.
+
+Synchronous events are ordered by the time in which they occurred. For example, user input events, such as mousedown and keyup, are synchronous and will match the same order as the user's input. Synchronous events can also follow predefined event order algorithms. For example, a mousedown event will always come before a mouseup event, which will always come before a click event.
+
+Asynchronous events, on the other hand, may be dispatched as the results of the action are completed, with no relation to other events, to other changes in the DOM, nor to the user interaction.
+
+A better name for this classification would have been ordered and unordered events.
+
+Ordered events, or synchronous events, respect some predefined ordering based on time and order algorithms. Unordered events, or asynchronous events, dispatch whenever they want.
+
+The synchronous/asynchronous classification does not change how the event interacts with the event loop, the event phases, the event's ability to be stopped or cancelled or how event listeners are executed.
+
+You need to be careful not to rely on any relationships between synchronous and asynchronous events. In some cases, you might find a particular asynchronous event happens before a synchronous event, and sometimes, that order might be different.
+
+The UI Events spec calls out one case in particular where you should not rely on any relationship between the asynchronous load event and synchronous DOMContentLoaded event, as the load event will be fired without any relationship to other events.
+
+In order to know if an event is synchronous or asynchronous, you can refer to the event's MDN page. Here for the focus event, we can see that it is synchronous. However, some MDN event reference pages don't say if the event is synchronous or asynchronous such as for the load event.
+
+## Window Reflecting Body Element Event Handlers
+
+he HTML spec calls out that a particular set of event handlers added to the body element behave as if they were attached to the window object. This set of event handlers is known as the Window-reflecting body element event handler set, which is a bit of a mouthful.
+
+What that means is that for HTML attribute event handlers and object property event handlers, for the blur, error, focus, load, resize and scroll events, if they are added to the body element, they will behave as if they were added to the window object.
+
+```js
+document.body.onfocus = function onFocus(event) {
+  console.group("onfocus");
+  console.log("this:", this); // window
+  console.log("currentTarget: ", event.currentTarget); // window
+  console.groupEnd();
+};
+
+document.body.addEventListener("focus", function onFocus(event) {
+  console.group("onfocus");
+  console.log("this:", this); // body
+  console.log("currentTarget: ", event.currentTarget); // body
+  console.groupEnd();
+});
+
+document.body.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
+```
+
+So the window reflecting behavior on the body element does not apply to event listeners created with the `addEventListener` API. We'll see something else which is a bit strange.
+We see that the event listener added with `addEventListener` is being logged before our object property event handler.
+
+This is because the event starts at window, goes to the body and bubbles back up again. Both these event listeners are bubble event listeners. If both of these event listeners were added to the body element, then the first one would be logged first. However, we see the `addEventListener` logged first. This is because as the event is being bubbled up from the body, it's first hitting the 2nd event listener that was added to the body element. Then it continues to bubble up the tree where it will hit the `onFocus` property event handler which is actually on the window and which is why it's logged second.
+
+## Debug and Inspect Event Listeners with Chrome Developer Tools
+
+```js
+parent.addEventListener(
+  "click",
+  function onParentClick() {
+    console.log("parent clicked");
+  },
+  { capture: true }
+);
+
+button.addEventListener("click", function onButtonClick() {
+  console.log("button clicked");
+});
+```
+
+You can debug this just like you would debug any other code. You can add console statements. You can add debugger statements. You can also add your own breakpoints.
+
+In the Sources panel, there's an event listener breakpoint section and you can cuase the browser to create breakpoints for categories of events or specific events.
+
+There's a `getEventListeners` function only available for devtools. If you call it with an element passed as an argument, it will return the listeners attached to that element.
+
+`monitorEvents` is another dev tools only function. You can provide an object as the first argument and the event you're interested in monitoring as the second.
+`monitorEvents(button, 'keydown')`
+You can stop monitoring events on the button by using `unmonitorEvents(button, 'keydown')`
+
+If you open the elements panel and go to an element, you can see the event listeners attached to that element. This also has an ancestors checkbox which allows you to see events added to ancestors of the button element.
+
+## Debug Event Listener Performance with Chrome Developer Tools
+
+In my application, I've started to notice that my click events are feeling sluggish. I'm going to come over to the DevTools, click on the Performance tab. Start recording a new session. Click on the button. Give it a little bit of time. All right.
+
+I'm going to stop the recording. I can see I've got a big red bar here. That doesn't look too good. I can see I had a 2,000-millisecond frame which, again, doesn't sound very healthy. I'm going to drill down here at the call stack.
+
+I can see that I had my click event task. I can see two functions here were called. onParentClick took 991 milliseconds to run and onButtonClick took about 1,000 milliseconds to run. All right. If I drill down in here, what are they doing? A long task. What's this about? Over here. Long task? Something doesn't seem right here.
+
+```js
+function longTask() {
+  console.log("starting");
+  const start = Date.now();
+  while (Date.now() - start < 1000) {}
+
+  console.log("finished");
+}
+parent.addEventListener(
+  "click",
+  function onParentClick() {
+    console.log("parent clicked");
+    longTask();
+  },
+  { capture: true }
+);
+
+button.addEventListener(
+  "click",
+  function onButtonClick() {
+    console.log("button clicked");
+    longTask();
+  },
+  { capture: true }
+);
+```
