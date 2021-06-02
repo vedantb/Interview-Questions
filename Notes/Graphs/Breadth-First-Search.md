@@ -76,7 +76,7 @@ However, **transformations between graph representations can usually be avoided*
 
 Due to the structure of a grid, if we are at the red ball in the middle we know we can move left, right, up and down to reach adjacent cells:
 
-![Red Ball](./RedBall.png)
+![Red Ball](./Images/RedBall.png)
 
 Mathematically, if the red ball is at the row-column coordinate (r, c) we can add the row vectors [-1, 0], [1, 0], [0, 1], and [0, -1] to reach adjacent cells.
 If the problem you are trying to solve allows moving diagonally then you can also include the row vectors: [-1, -1], [-1, 1], [1, 1], [1, -1]
